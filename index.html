@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اشتراک‌گذاری فایل - NG Market</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #121212; color: #fff; padding: 20px; }
+        .container { max-width: 600px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 10px; }
+        input, button { padding: 10px; margin: 5px 0; width: 100%; border-radius: 5px; border: none; box-sizing: border-box; }
+        button { background: #3ecf8e; color: #000; font-weight: bold; cursor: pointer; font-size: 16px; }
+        button:hover { background: #34b37a; }
+        .file-item { background: #2a2a2a; padding: 10px; margin: 10px 0; border-radius: 8px; }
+        img { max-width: 100%; border-radius: 5px; margin-top: 5px; }
+        a { color: #3ecf8e; text-decoration: none; }
+        .status { font-size: 14px; color: #888; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>آپلود فایل و عکس</h1>
+    <p>فایل مورد نظر خود را انتخاب کنید:</p>
+    
+    <input type="file" id="fileInput">
+    <button onclick="uploadFile()">آپلود کن</button>
+    <div id="status" class="status"></div>
+
+    <hr style="margin: 20px 0; border-color: #333;">
+
+    <h2>فایل‌های به اشتراک گذاشته شده</h2>
+    <div id="filesList">در حال بارگذاری...</div>
+</div>
+
+<script>
+    // ⚠️ فقط این دو خط رو چک کن:
+    const supabaseUrl = 'https://oakxgonxkedxellbons.supabase.co';
+    const supabaseKey = 'sb_publishable_smEpwHuY8aolfsTYkfCGvA_znPceORR';  // ← کلید Publishable شما
+
+    const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    const statusDiv = document.getElementById('status');
+
+    async function uploadFile() {
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
+
+        if (!file) {
+            statusDiv.textContent = 'لطفاً یک فایل انتخاب کنید';
+            statusDiv.style.color = 'red';
+            return;
+        }
+
+        statusDiv.textContent = 'در حال آپلود...';
+        statusDiv.style.color = 'yellow';
+
+        // 1. آپلود فایل توی Storage
+        const fileName = Date.now() + '_' + file.name;
+        const { error: uploadError } = await supabase.storage
+            .from('uploads')
+            .upload(fileName, file);
+
+        if (uploadError) {
+            statusDiv.textContent = 'خطا در آپلود: ' + uploadError.message;
+            statusDiv.style.color = 'red';
+            return;
+        }
+
+        // 2. گرفتن لینک عمومی
+        const { data: urlData } = supabase.storage
+            .from('uploads')
+            .getPublicUrl(fileName);
+
+        // 3. ذخیره توی جدول files
+        const { error: dbError } = await supabase
+            .from('files')
+            .insert([{ 
+                file_name: file.name, 
+                file_url: urlData.publicUrl 
+            }]);
+
+        if (dbError) {
+            statusDiv.textContent = 'خطا در ذخیره اطلاعات: ' + dbError.message;
+            statusDiv.style.color = 'red';
+        } else {
+            statusDiv.textContent = '✅ فایل با موفقیت آپلود شد!';
+            statusDiv.style.color = 'green';
+            fileInput.value = '';
+            loadFiles();
+        }
+    }
+
+    async function loadFiles() {
+        const { data, error } = await supabase
+            .from('files')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        const listDiv = document.getElementById('filesList');
+
+        if (error) {
+            listDiv.innerHTML = 'خطا در بارگذاری فایل‌ها: ' + error.message;
+            return;
+        }
+
+        listDiv.innerHTML = '';
+
+        if (data.length === 0) {
+            listDiv.innerHTML = 'هنوز فایلی آپلود نشده است.';
+            return;
+        }
+
+        data.forEach(item => {
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'file-item';
+            
+            const isImage = item.file_name.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+            const preview = isImage ? `<img src="${item.file_url}" alt="${item.file_name}">` : '';
+
+            fileDiv.innerHTML = `
+                ${preview}
+                <strong>${item.file_name}</strong><br>
+                <a href="${item.file_url}" target="_blank">دانلود فایل</a>
+            `;
+            listDiv.appendChild(fileDiv);
+        });
+    }
+
+    loadFiles();
+</script>
+
+</body>
+</html>
